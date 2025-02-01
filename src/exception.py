@@ -1,5 +1,6 @@
 import sys
-import logging
+from src.logger import logging
+#import logging
 
 
 def error_message_detail(error, error_detail:sys):
@@ -21,9 +22,13 @@ class CustomExceptiom(Exception):
         return self.error_message
     
 
-if __name__ == '__main__':
-    try:
-        a = 1/0
-    except Exception as e:
-        logging.info('Divided by Zero')
-        raise CustomExceptiom (e, sys)
+"""Test: Verify that ZeroDivisionError is handled and logged correctly.
+    Specifically, this test checks that CustomException is raised with the 
+    correct message and the original ZeroDivisionError details are included.
+    """
+#if __name__ == '__main__':
+#    try:
+#        a = 1/0
+#    except Exception as e:
+#        logging.info('Divided by Zero')
+#        raise CustomExceptiom (e, sys)
