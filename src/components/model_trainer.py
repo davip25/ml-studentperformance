@@ -9,6 +9,7 @@ from sklearn.ensemble import (
 )
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
+from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.tree import DecisionTreeRegressor
 from xgboost import XGBRegressor
@@ -35,6 +36,7 @@ class ModelTrainer:
                 test_array[:, -1]
             )
 
+            # Definir los modelos que se evaluarán
             models = {
                 'Random Forest': RandomForestRegressor(),
                 'Decision Tree Regressor': DecisionTreeRegressor(),
@@ -46,36 +48,79 @@ class ModelTrainer:
                 'AdaBoost Regressor': AdaBoostRegressor()
             }
 
+            # Definir los hiperparámetros para GridSearch
+            param_grid = {
+                'Random Forest': {
+                    'n_estimators': [10, 50, 100],
+                    'max_depth': [None, 10, 20]
+                },
+                'Decision Tree Regressor': {
+                    'max_depth': [None, 10, 20],
+                    'min_samples_split': [2, 10]
+                },
+                'Gradient Boosting': {
+                    'n_estimators': [50, 100],
+                    'learning_rate': [0.05, 0.1]
+                },
+                'K-Neighbors Regressor': {
+                    'n_neighbors': [3, 5, 10],
+                    'weights': ['uniform', 'distance']
+                },
+                'XGB Regressor': {
+                    'n_estimators': [50, 100],
+                    'learning_rate': [0.05, 0.1]
+                },
+                'AdaBoost Regressor': {
+                    'n_estimators': [50, 100]
+                },
+            }
+
             model_report = {}
-            
-            # Train models and evaluate performance without GridSearchCV
+
+            # Entrenar y evaluar cada modelo con GridSearchCV
             for model_name, model in models.items():
-                logging.info(f'Training model: {model_name}')
-                model.fit(X_train, y_train)
-                y_train_pred = model.predict(X_train)
-                y_test_pred = model.predict(X_test)
-                train_model_score = r2_score(y_train, y_train_pred)
-                test_model_score = r2_score(y_test, y_test_pred)
-                model_report[model_name] = test_model_score
+                try:
+                    # Si el modelo tiene parámetros de GridSearch, realizamos la búsqueda
+                    if model_name in param_grid:
+                        grid_search = GridSearchCV(estimator=model, param_grid=param_grid[model_name], cv=3)
+                        grid_search.fit(X_train, y_train)
+                        best_model = grid_search.best_estimator_
+                        best_params = grid_search.best_params_
+                        predicted = best_model.predict(X_test)
+                        r2_square = r2_score(y_test, predicted)
+                        model_report[model_name] = r2_square
+                        logging.info(f"{model_name} Best Params: {best_params} | R2 Score: {r2_square}")
+                    else:
+                        # Si no tiene parámetros para GridSearch, entrenamos el modelo normalmente
+                        model.fit(X_train, y_train)
+                        predicted = model.predict(X_test)
+                        r2_square = r2_score(y_test, predicted)
+                        model_report[model_name] = r2_square
+                        logging.info(f"{model_name} R2 Score: {r2_square}")
+                except Exception as e:
+                    logging.error(f"Error with model {model_name}: {e}")
+                    model_report[model_name] = None
 
-            # To get the best model score from dict
-            best_model_score = max(sorted(model_report.values()))
-            # To get the name from dict
-            best_model_name = list(model_report.keys())[list(model_report.values()).index(best_model_score)]
+            # Filtrar los modelos que tienen un valor de R2
+            model_report = {name: score for name, score in model_report.items() if score is not None}
 
+            # Seleccionar el mejor modelo
+            if not model_report:
+                raise CustomException('No valid models found')
+
+            best_model_name = max(model_report, key=model_report.get)
             best_model = models[best_model_name]
 
-            if best_model_score < 0.6:
-                raise CustomException('No best model found with a sufficient score')
+            if model_report[best_model_name] < 0.6:
+                raise CustomException(f'No best model found. Best R2 is below 0.6')
 
-            logging.info(f'Best model found: {best_model_name} with score: {best_model_score}')
+            logging.info(f'Best model found: {best_model_name} with R2 score: {model_report[best_model_name]}')
 
-            # Save the best model
+            # Guardar el mejor modelo
             save_object(file_path=self.model_trainer_config.trained_model_file_path, obj=best_model)
 
-            predicted = best_model.predict(X_test)
-            r2_square = r2_score(y_test, predicted)
-            return r2_square, best_model_name
+            # Incluir el modelo seleccionado como parte de la salida
+            return model_report, best_model_name, best_model
 
         except Exception as e:
             raise CustomException(e, sys)
